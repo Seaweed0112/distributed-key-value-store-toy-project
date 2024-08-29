@@ -1,0 +1,73 @@
+package main
+
+import (
+	"hash/fnv"
+	"sort"
+	"strconv"
+	"sync"
+)
+
+type NodeInfo struct {
+	IP   string
+	Port int
+}
+
+type ConsistentHashing struct {
+	sync.RWMutex
+	hashRing      []int
+	NodeInfoMap   map[int]NodeInfo
+	replicaFactor int
+	hashFunction  func(data []byte) uint32
+	nodeCount     int
+}
+
+func NewConsistentHashing(replicaFactor int) *ConsistentHashing {
+	return &ConsistentHashing{
+		NodeInfoMap:   make(map[int]NodeInfo),
+		replicaFactor: replicaFactor,
+		hashFunction: func(data []byte) uint32 {
+			hash := fnv.New32a()
+			hash.Write(data)
+			return hash.Sum32()
+		},
+	}
+}
+
+func (ch *ConsistentHashing) AddNodeInfo(ip string, port int) {
+	ch.Lock()
+	defer ch.Unlock()
+
+	ch.nodeCount++
+	for i := 0; i < ch.replicaFactor; i++ {
+		hash := int(ch.hashFunction([]byte(ip + ":" + strconv.Itoa(port) + "-" + strconv.Itoa(i))))
+		ch.hashRing = append(ch.hashRing, hash)
+		ch.NodeInfoMap[hash] = NodeInfo{IP: ip, Port: port}
+	}
+
+	sort.Ints(ch.hashRing)
+}
+
+func (ch *ConsistentHashing) GetNodeInfos(key string) []NodeInfo {
+	ch.RLock()
+	defer ch.RUnlock()
+
+	var NodeInfos []NodeInfo
+	hash := int(ch.hashFunction([]byte(key)))
+	for i := 0; i < ch.replicaFactor; i++ {
+		idx := ch.search(hash)
+		NodeInfos = append(NodeInfos, ch.NodeInfoMap[ch.hashRing[idx]])
+		hash = ch.hashRing[(idx+1)%len(ch.hashRing)]
+	}
+
+	return NodeInfos
+}
+
+func (ch *ConsistentHashing) search(hash int) int {
+	idx := sort.Search(len(ch.hashRing), func(i int) bool {
+		return ch.hashRing[i] >= hash
+	})
+	if idx == len(ch.hashRing) {
+		return 0
+	}
+	return idx
+}
