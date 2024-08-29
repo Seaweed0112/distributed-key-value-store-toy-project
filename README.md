@@ -33,14 +33,15 @@ The system is composed of two main components:
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/distributed-key-value-store.git
-cd distributed-key-value-store
+git@github.com:Seaweed0112/distributed-key-value-store-toy-project.git
+cd distributed-key-value-store-toy-project
 ```
 
 ### Run the Program
 
 ```bash
-go run main.go
+go install
+distributed-cache-system
 ```
 
 ## Usage
@@ -71,14 +72,6 @@ Once the program is running, you can interact with the system using the CLI. The
 
     ```bash
     > update event1
-    ```
-
--   **addnode**:
-
-    -   Dynamically adds a new node to the consistent hashing system to balance the load.
-
-    ```bash
-    > addnode
     ```
 
 -   **exit**:
