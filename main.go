@@ -39,23 +39,21 @@ func (ch *ConsistentHashing) AddNode(node *Node) {
 		ch.hashRing = append(ch.hashRing, hash)
 		ch.nodeMap[hash] = node
 	}
+	// log.Printf("hashRing: %v\n", ch.hashRing)
 
 	sort.Ints(ch.hashRing)
 }
 
-func (ch *ConsistentHashing) GetNodes(event string) []*Node {
+func (ch *ConsistentHashing) GetNode(event string) *Node {
 	ch.RLock()
 	defer ch.RUnlock()
 
-	var nodes []*Node
+	var node *Node
 	hash := int(hashFunction(event))
-	for i := 0; i < ch.replicaFactor; i++ {
-		idx := ch.search(hash)
-		nodes = append(nodes, ch.nodeMap[ch.hashRing[idx]])
-		hash = ch.hashRing[(idx+1)%len(ch.hashRing)]
-	}
+	idx := ch.search(hash)
+	node = ch.nodeMap[ch.hashRing[idx]]
 
-	return nodes
+	return node
 }
 
 func hashFunction(event string) uint32 {
@@ -72,6 +70,30 @@ func (ch *ConsistentHashing) search(hash int) int {
 		return 0
 	}
 	return idx
+}
+
+func (ch *ConsistentHashing) HandleRequest(command, event string) (string, error) {
+	node := ch.GetNode(event)
+	var response string
+
+	switch command {
+	case "update":
+		err := node.Update(event)
+		if err != nil {
+			return "", err
+		}
+		response = "Update successful\n"
+	case "get":
+		response, err := node.Get(event)
+		if err == nil {
+			return response, nil
+		}
+		response = "Event not found\n"
+	default:
+		response = "Unknown command\n"
+	}
+
+	return response, nil
 }
 
 func startMainServer(port int, ch *ConsistentHashing, ready chan<- bool) {
@@ -117,27 +139,21 @@ func handleConnection(conn net.Conn, ch *ConsistentHashing) {
 
 	command := parts[0]
 	event := parts[1]
-	nodes := ch.GetNodes(event)
 
-	for _, node := range nodes {
-		_, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", node.Port))
-		if err != nil {
-			log.Println("Error connecting to node:", err)
-		} else {
-			// Handle update/get command with node
-		}
+	response, err := ch.HandleRequest(command, event)
+	if err != nil {
+		log.Println("Error handling request:", err)
+		response = "Error handling request\n"
 	}
 
-	if command == "get" {
-		_, err := conn.Write([]byte("Response: OK\n"))
-		if err != nil {
-			log.Println("Error writing response to connection:", err)
-		}
+	_, err = conn.Write([]byte(response))
+	if err != nil {
+		log.Println("Error writing response to connection:", err)
 	}
 }
 
-func findAvailablePort() int {
-	for port := 5000; port <= 65535; port++ {
+func findAvailablePort(start int) int {
+	for port := start; port <= 65535; port++ {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), time.Second)
 		if err != nil {
 			return port
@@ -168,6 +184,40 @@ func sendCommandToMainServer(address, request string) (string, error) {
 	return string(buf[:n]), nil
 }
 
+func sendCommandToNode(port int, request string) (string, error) {
+	address := fmt.Sprintf("127.0.0.1:%d", port)
+	conn, err := net.Dial("tcp", address)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	_, err = conn.Write([]byte(request))
+	if err != nil {
+		return "", err
+	}
+
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return "", err
+	}
+
+	return string(buf[:n]), nil
+}
+
+func showAllCounters(ports []int) {
+	fmt.Println("Current counters on all nodes:")
+	for _, port := range ports {
+		fmt.Printf("Node on port %d:\n", port)
+		response, err := sendCommandToNode(port, "status")
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		} else {
+			fmt.Println(response)
+		}
+	}
+}
 func main() {
 	fmt.Println("Welcome to Consistent Hashing based Distributed Key-Value Store")
 
@@ -198,21 +248,30 @@ func main() {
 			}
 
 			// start nodes
+			// wait until all nodes are started
+			var wg = &sync.WaitGroup{}
+			start := 5000
 			for i := 0; i < nodeCount; i++ {
-				port := findAvailablePort()
+				port := findAvailablePort(start)
+				start = port + 1
 				if port == -1 {
 					log.Fatalf("Failed to find available port for node %d", i+1)
 				}
 
-				n := NewNode(nodeId, port)
-				go n.Start()
+				wg.Add(1)
+				go func(port int) {
+					n := NewNode(nodeId, port)
+					go n.Start()
+					ch.AddNode(n)
+					wg.Done()
+				}(port)
 
 				availablePorts = append(availablePorts, port)
-				ch.AddNode(n)
 
 				log.Printf("Started node %d on port %d", nodeId, port)
 				nodeId++
 			}
+			wg.Wait()
 		}
 		fmt.Print("> ")
 		input, _ := reader.ReadString('\n')
@@ -223,6 +282,8 @@ func main() {
 			break
 		} else if input == "status" {
 			fmt.Printf("Nodes running on ports: %v\n", availablePorts)
+			showAllCounters(availablePorts)
+
 		} else if strings.HasPrefix(input, "get ") {
 			event := strings.TrimPrefix(input, "get ")
 			response, err := sendCommandToMainServer("127.0.0.1:4000", "get "+event)
@@ -240,7 +301,7 @@ func main() {
 				fmt.Println(response)
 			}
 		} else {
-			fmt.Println("Unknown command. Available commands: status, exit")
+			fmt.Println("Unknown command. Available commands: get {event}, update {event}, status, exit")
 		}
 	}
 }
