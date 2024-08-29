@@ -7,7 +7,7 @@ This project is a simple distributed key-value store implemented in Go, using co
 ## Features
 
 -   **Consistent Hashing**: Efficiently distributes keys across multiple nodes, allowing for scalable and fault-tolerant key-value storage.
--   **Dynamic Node Management**: Add nodes dynamically at runtime to balance the load and ensure fault tolerance.
+-   **Dynamic Node Management**: Add nodes dynamically at runtime to balance the load and ensure fault tolerance. (TODO)
 -   **Basic Key-Value Operations**: Supports `get` and `update` commands to retrieve and increment event counts.
 -   **Node Status Reporting**: Retrieve the current status of all nodes, including the count of all keys stored on each node.
 
