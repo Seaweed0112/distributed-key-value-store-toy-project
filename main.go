@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+const NumSlots = 16384
+
 type ConsistentHashing struct {
 	sync.RWMutex
 	hashRing      []int
@@ -59,7 +61,7 @@ func (ch *ConsistentHashing) GetNode(event string) *Node {
 func hashFunction(event string) uint32 {
 	hash := fnv.New32a()
 	hash.Write([]byte(event))
-	return hash.Sum32()
+	return hash.Sum32() % NumSlots
 }
 
 func (ch *ConsistentHashing) search(hash int) int {
