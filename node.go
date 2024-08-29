@@ -97,7 +97,7 @@ func (n *Node) Start() {
 	}
 	defer listener.Close()
 
-	fmt.Printf("Node listening on port %d\n", n.Port)
+	// fmt.Printf("Node listening on port %d\n", n.Port)
 
 	for {
 		conn, err := listener.Accept()

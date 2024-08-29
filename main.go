@@ -39,7 +39,6 @@ func (ch *ConsistentHashing) AddNode(node *Node) {
 		ch.hashRing = append(ch.hashRing, hash)
 		ch.nodeMap[hash] = node
 	}
-	// log.Printf("hashRing: %v\n", ch.hashRing)
 
 	sort.Ints(ch.hashRing)
 }
@@ -52,6 +51,7 @@ func (ch *ConsistentHashing) GetNode(event string) *Node {
 	hash := int(hashFunction(event))
 	idx := ch.search(hash)
 	node = ch.nodeMap[ch.hashRing[idx]]
+	fmt.Printf("hash: %d, idx: %d, node: %d\n", hash, idx, node.id)
 
 	return node
 }
@@ -73,6 +73,8 @@ func (ch *ConsistentHashing) search(hash int) int {
 }
 
 func (ch *ConsistentHashing) HandleRequest(command, event string) (string, error) {
+	log.Printf("hashRing: %v\n", ch.hashRing)
+	log.Printf("nodeMap: %v\n", ch.nodeMap)
 	node := ch.GetNode(event)
 	var response string
 
@@ -283,7 +285,6 @@ func main() {
 		} else if input == "status" {
 			fmt.Printf("Nodes running on ports: %v\n", availablePorts)
 			showAllCounters(availablePorts)
-
 		} else if strings.HasPrefix(input, "get ") {
 			event := strings.TrimPrefix(input, "get ")
 			response, err := sendCommandToMainServer("127.0.0.1:4000", "get "+event)
@@ -299,6 +300,18 @@ func main() {
 				fmt.Println("Error:", err)
 			} else {
 				fmt.Println(response)
+			}
+		} else if input == "batchupdate" {
+			// batch update
+			// update event a to z
+			for i := 97; i < 123; i++ {
+				event := string(i)
+				reponse, err := sendCommandToMainServer("127.0.0.1:4000", "update "+event)
+				if err != nil {
+					fmt.Printf("Error updating event %s: %v\n", event, err)
+				} else {
+					fmt.Println(reponse)
+				}
 			}
 		} else {
 			fmt.Println("Unknown command. Available commands: get {event}, update {event}, status, exit")
